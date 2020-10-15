@@ -1,0 +1,650 @@
+
+现在来看一下实现的过程。
+
+外形
+俄罗斯方块整个界面分为两部分，一部分是左边的游戏区域，另一部分是右边的显示区域，显示得分、速度、下一个方块样式等。这里就不放截图了，看上图就可以。
+
+游戏区域跟贪吃蛇一样，是由一个个小方格组成的，为了看得直观，我特意画了网格线。
+
+import sys
+import pygame
+from pygame.locals import *
+
+SIZE = 30  # 每个小方格大小
+BLOCK_HEIGHT = 20  # 游戏区高度
+BLOCK_WIDTH = 10   # 游戏区宽度
+BORDER_WIDTH = 4   # 游戏区边框宽度
+BORDER_COLOR = (40, 40, 200)  # 游戏区边框颜色
+SCREEN_WIDTH = SIZE * (BLOCK_WIDTH + 5)  # 游戏屏幕的宽
+SCREEN_HEIGHT = SIZE * BLOCK_HEIGHT      # 游戏屏幕的高
+BG_COLOR = (40, 40, 60)  # 背景色
+BLACK = (0, 0, 0)
+
+
+def print_text(screen, font, x, y, text, fcolor=(255, 255, 255)):
+    imgText = font.render(text, True, fcolor)
+    screen.blit(imgText, (x, y))
+
+
+def main():
+    pygame.init()
+    screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
+    pygame.display.set_caption('俄罗斯方块')
+
+    font1 = pygame.font.SysFont('SimHei', 24)  # 黑体24
+    font_pos_x = BLOCK_WIDTH * SIZE + BORDER_WIDTH + 10  # 右侧信息显示区域字体位置的X坐标
+    font1_height = int(font1.size('得分')[1])
+
+    score = 0           # 得分
+
+    while True:
+        for event in pygame.event.get():
+            if event.type == QUIT:
+                sys.exit()
+
+        # 填充背景色
+        screen.fill(BG_COLOR)
+        # 画游戏区域分隔线
+        pygame.draw.line(screen, BORDER_COLOR,
+                         (SIZE * BLOCK_WIDTH + BORDER_WIDTH // 2, 0),
+                         (SIZE * BLOCK_WIDTH + BORDER_WIDTH // 2, SCREEN_HEIGHT), BORDER_WIDTH)
+        # 画网格线 竖线
+        for x in range(BLOCK_WIDTH):
+            pygame.draw.line(screen, BLACK, (x * SIZE, 0), (x * SIZE, SCREEN_HEIGHT), 1)
+        # 画网格线 横线
+        for y in range(BLOCK_HEIGHT):
+            pygame.draw.line(screen, BLACK, (0, y * SIZE), (BLOCK_WIDTH * SIZE, y * SIZE), 1)
+
+        print_text(screen, font1, font_pos_x, 10, f'得分: ')
+        print_text(screen, font1, font_pos_x, 10 + font1_height + 6, f'{score}')
+        print_text(screen, font1, font_pos_x, 20 + (font1_height + 6) * 2, f'速度: ')
+        print_text(screen, font1, font_pos_x, 20 + (font1_height + 6) * 3, f'{score // 10000}')
+        print_text(screen, font1, font_pos_x, 30 + (font1_height + 6) * 4, f'下一个：')
+
+        pygame.display.flip()
+
+
+if __name__ == '__main__':
+    main()
+方块
+接下来就是要定义方块，方块的形状一共有以下 7 种：
+
+
+I 型
+
+
+O 型
+
+
+T 型
+
+
+S 型
+
+
+Z 型
+
+
+L 型
+
+
+J 型
+这里我做了多次的更改，因为方块最大的长度是长条形的，为4格，所以我统一用了 4 × 4 的方格来定义。这也是可以的，只是后来发现不方便。
+
+为了直观，直接以一个二维数组来定义方块，其中 . 表示空的， 0 表示实心的。（用 . 表示空是为了看得直观，如果用空格会看不清。）
+例如 I 行，以 4 × 4 方格定义为
+
+['.0..',
+ '.0..',
+ '.0..',
+ '.0..']
+和
+
+['....',
+ '....',
+ '0000',
+ '....']
+方块最难的是需要实现旋转功能，比如 I 型，就有横和竖两种形态。所谓旋转，表面上看，是把方块顺时针旋转了 90°，但实际做的时候，我们并不需要正真的去实现这个“旋转”的效果。
+
+最终实现的时候，这些图形都是我们画在界面上的，而每一次刷新，界面上所有内容都会被清空重画，所以旋转只是画当前方块的时候不再画之前的形状，而是画旋转后的形状。
+
+比如这个 I 型，定义成了 4 × 4 的形状，但实际上只需要 1 × 4 或 4 × 1 就可以了，其他剩下的地方都是空的。它不像 T 型，T 型不是一个矩形，如果用一个矩形来定义，必然有 2 个位置是空的。那么，I 型真的有必要定义成 4 × 4 吗？
+
+答案是肯定的。想想看，如果是 4 × 1 的一个横条，旋转后变成 1 × 4 的竖条，这个位置怎么确定？好像有点困难。但是如果是 4 × 4 的正方形，我们只需要固定起点坐标（左上角）不变，把竖条的 4 × 4 直接替换掉横条的 4 × 4 区域，是不是就实现旋转了？而且位置很容易计算。
+
+另外一点，在有些情况下是不可以旋转的。比如 I 型的竖条，在紧贴左右边框的时候是不可以旋转的。这点我有印象，可以肯定。但是对于其他的形状，我就不是很确定了，我百度搜了下，找了个网页版的俄罗斯方块玩了下，发现也是不可以的。例如：
+
+
+
+在紧贴右边框的时候是无法旋转的。如果要每一个形状都去判断一下，那实在是太烦了。从方块的定义入手，就可以很简单的实现。
+
+例如竖条行，定义是：
+
+['.0..',
+ '.0..',
+ '.0..',
+ '.0..']
+竖条是可以贴边的，所以当它在最左边的时候，X 轴坐标是 -1，这是因为定义中左边一竖排是空的。我们只需判定，当方块所定义的形状（包括空的部分）完全在游戏区域内时才可以旋转。
+
+我之前所说，全都定义成 4 × 4 不好，原因就在这里，对于 T 型等其他形状，无法做这个判定。所以，对于 T 型等形状，我们可以定义成 3 × 3 的格式：
+
+['.0.',
+ '000',
+ '...']
+还有一种情况是无法旋转的，就是旋转后的位置已经被别的方块占了。另外下落，左右移动，都要做这个判断。既然这些是一致的，那么就可以用同一个方法来判断。
+
+先要定义一个 game_area 变量，用于存放整个游戏区域当前的状态：
+
+game_area = [['.'] * BLOCK_WIDTH for _ in range(BLOCK_HEIGHT)]
+初始状态全是空的，所以全部用 . 初始化就可以了。
+另外，需要一些变量定义当前下落方块的状态
+
+cur_block = None   # 当前下落方块
+cur_pos_x, cur_pos_y = 0, 0  # 当前下落方块的坐标
+方块我们是以二维数组的方式定义的，并且存在空行和空列，如果我们遍历这个二维数组判断其所在的区域在当前游戏区域内是否已经被别的方块所占，这个是可以实现的。我们考虑另外一种情况，一个竖条形，左边一排是空的，这空的一排是可以移出游戏区域的，这个怎么判断？每次左移的时候都去判断一下左边一排全都是空吗？这太麻烦了。并且方块都是固定的，所以这些我们可以提前定义好。最终方块定义如下：
+
+from collections import namedtuple
+
+Point = namedtuple('Point', 'X Y')
+Block = namedtuple('Block', 'template start_pos end_pos name next')
+
+# S形方块
+S_BLOCK = [Block(['.00',
+                  '00.',
+                  '...'], Point(0, 0), Point(2, 1), 'S', 1),
+           Block(['0..',
+                  '00.',
+                  '.0.'], Point(0, 0), Point(1, 2), 'S', 0)]
+方块需要包含两个方法，获取随机一个方块和旋转时获取旋转后的方块
+
+BLOCKS = {'O': O_BLOCK,
+          'I': I_BLOCK,
+          'Z': Z_BLOCK,
+          'T': T_BLOCK,
+          'L': L_BLOCK,
+          'S': S_BLOCK,
+          'J': J_BLOCK}
+
+
+def get_block():
+    block_name = random.choice('OIZTLSJ')
+    b = BLOCKS[block_name]
+    idx = random.randint(0, len(b) - 1)
+    return b[idx]
+
+
+# 获取旋转后的方块
+def get_next_block(block):
+    b = BLOCKS[block.name]
+    return b[block.next]
+判断是否可以旋转，下落，移动的方法也很容易实现了
+
+def _judge(pos_x, pos_y, block):
+    nonlocal game_area
+    for _i in range(block.start_pos.Y, block.end_pos.Y + 1):
+        if pos_y + block.end_pos.Y >= BLOCK_HEIGHT:
+            return False
+        for _j in range(block.start_pos.X, block.end_pos.X + 1):
+            if pos_y + _i >= 0 and block.template[_i][_j] != '.' and game_area[pos_y + _i][pos_x + _j] != '.':
+                return False
+    return True
+停靠
+最后一个问题是停靠，当方块下落到底或者遇到别的方块之后，就不能在下落了。我将此称之为“停靠”，有个名字说起来也方便一点。
+
+首先是要判断是否可以停靠，停靠发生之后，就是将当前方块的非空点画到游戏区域上，说白了，就是将cur_block的非空点按对应位置复制到game_area里去。并且计算是否有一排被全部填满了，全部填满则消除。
+
+def _dock():
+    nonlocal cur_block, next_block, game_area, cur_pos_x, cur_pos_y, game_over
+    for _i in range(cur_block.start_pos.Y, cur_block.end_pos.Y + 1):
+        for _j in range(cur_block.start_pos.X, cur_block.end_pos.X + 1):
+            if cur_block.template[_i][_j] != '.':
+                game_area[cur_pos_y + _i][cur_pos_x + _j] = '0'
+    if cur_pos_y + cur_block.start_pos.Y <= 0:
+        game_over = True
+    else:
+        # 计算消除
+        remove_idxs = []
+        for _i in range(cur_block.start_pos.Y, cur_block.end_pos.Y + 1):
+            if all(_x == '0' for _x in game_area[cur_pos_y + _i]):
+                remove_idxs.append(cur_pos_y + _i)
+        if remove_idxs:
+            # 消除
+            _i = _j = remove_idxs[-1]
+            while _i >= 0:
+                while _j in remove_idxs:
+                    _j -= 1
+                if _j < 0:
+                    game_area[_i] = ['.'] * BLOCK_WIDTH
+                else:
+                    game_area[_i] = game_area[_j]
+                _i -= 1
+                _j -= 1
+        cur_block = next_block
+        next_block = blocks.get_block()
+        cur_pos_x, cur_pos_y = (BLOCK_WIDTH - cur_block.end_pos.X - 1) // 2, -1 - cur_block.end_pos.Y
+至此，整个俄罗斯方块的主体功能就算是完成了。
+
+这里很多参数是可以调的，例如觉得旋转别扭，可以直接调整方块的定义，而无需去改动代码逻辑。
+
+
+
+------------------ 原始邮件 ------------------
+发件人: "上善若水"<2812139581@qq.com>;
+发送时间: 2020年7月23日(星期四) 晚上7:28
+收件人: "上善若水"<2812139581@qq.com>;
+主题: 俄罗斯方块
+
+#_*_ coding:utf-8 _*_
+'''
+Created on 2017年7月30日上午11:16:44
+
+@author: xiaolin
+
+relief=RAISED
+sticky=N+E+S+W
+'''
+from Tkinter import *
+import random
+import time
+from tkMessageBox import *
+
+
+#俄罗斯方块界面的高度
+HEIGHT  = 20
+
+#俄罗斯方块界面的宽度
+WIDTH   = 10
+
+ACTIVE  = 1
+PASSIVE = 0
+TRUE    = 1
+FALSE   = 0
+
+style = [
+            [[(0,0),(0,1),(1,1),(2,1)],[(1,0),(1,1),(1,2),(0,2)],[(0,1),(1,1),(2,1),(2,2)],[(1,0),(2,0),(1,1),(1,2)]],#j
+            [[(1,0),(1,1),(1,2),(2,1)],[(1,0),(0,1),(1,1),(2,1)],[(1,0),(1,1),(1,2),(0,1)],[(0,1),(1,1),(2,1),(1,2)]],#T
+            [[(0,1),(1,1),(2,1),(2,0)],[(0,0),(1,0),(1,1),(1,2)],[(0,1),(1,1),(2,1),(0,2)],[(1,0),(1,1),(1,2),(2,2)]],#反L
+            [[(0,0),(0,1),(1,1),(1,2)],[(2,1),(1,1),(1,2),(0,2)],[(0,0),(0,1),(1,1),(1,2)],[(2,1),(1,1),(1,2),(0,2)]],#Z
+            [[(1,0),(1,1),(0,1),(0,2)],[(0,1),(1,1),(1,2),(2,2)],[(1,0),(1,1),(0,1),(0,2)],[(0,1),(1,1),(1,2),(2,2)]],#反Z
+            [[(0,0),(0,1),(1,1),(1,0)],[(0,0),(0,1),(1,1),(1,0)],[(0,0),(0,1),(1,1),(1,0)],[(0,0),(0,1),(1,1),(1,0)]],#田
+            [[(1,0),(1,1),(1,2),(1,3)],[(0,1),(1,1),(2,1),(3,1)],[(1,0),(1,1),(1,2),(1,3)],[(0,1),(1,1),(2,1),(3,1)]]#长条
+    ]
+
+root=Tk();
+root.title('俄罗斯方块')
+
+class App(Frame):
+    def __init__(self,master):
+        Frame.__init__(self)
+        master.bind('<Up>',self.Up)
+        master.bind('<Left>',self.Left)
+        master.bind('<Right>',self.Right)
+        master.bind('<Down>',self.Down)
+
+        master.bind('<space>',self.Space)
+        master.bind('<Control-Shift-Key-F12>',self.Play)
+        master.bind('<Key-P>',self.Pause)
+        master.bind('<Key-S>',self.StartByS)
+
+        # rgb颜色值
+        self.backg="#%02x%02x%02x" % (120,150,30)    #大背景
+        self.frontg="#%02x%02x%02x" % (40,120,150)    #下一个形状颜色
+        self.nextg="#%02x%02x%02x" % (150,100,100)    #小背景
+        self.flashg="#%02x%02x%02x" % (210,130,100)    #炸的颜色
+
+        self.LineDisplay=Label(master,text='Lines: ',bg='black',fg='red')
+        self.Line=Label(master,text='0',bg='black',fg='red')
+        self.ScoreDisplay=Label(master,text='Score: ',bg='black',fg='red')
+        self.Score=Label(master,text='0',bg='black',fg='red')
+        self.SpendTimeDisplay=Label(master,text='Time: ',bg='black',fg='red')
+        self.SpendTime=Label(master,text='0.0',bg='black',fg='red')
+
+        self.LineDisplay.grid(row=HEIGHT-2,column=WIDTH,columnspan=2)
+        self.Line.grid(row=HEIGHT-2,column=WIDTH+2,columnspan=3)
+        self.ScoreDisplay.grid(row=HEIGHT-1,column=WIDTH,columnspan=2)
+        self.Score.grid(row=HEIGHT-1,column=WIDTH+2,columnspan=3)
+        self.SpendTimeDisplay.grid(row=HEIGHT-4,column=WIDTH,columnspan=2)
+        self.SpendTime.grid(row=HEIGHT-4,column=WIDTH+2,columnspan=3)
+
+        self.TotalTime=0.0
+        self.TotalLine=0
+        self.TotalScore=0
+
+        #游戏结束
+        self.isgameover=FALSE
+        #暂停
+        self.isPause=FALSE
+        #开始
+        self.isStart=FALSE
+        self.NextList=[]        #整个小背景
+        self.NextRowList=[]     #一行小背景
+
+        self.px=0
+        self.py=0       #记录方块参考点
+
+        #渲染小背景
+        r=0;c=0
+        for k in range(4*4):
+            LN=Label(master,text='    ',bg=str(self.nextg),fg='white',relief=FLAT,bd=3)
+            LN.grid(row=r,column=WIDTH+c,sticky=N+E+S+W)
+            self.NextRowList.append(LN)
+            c=c+1
+            if c>=4:
+                r=r+1;c=0
+                self.NextList.append(self.NextRowList)
+                self.NextRowList=[]
+
+        #渲染大背景
+        self.BlockList=[]
+        self.BlockRowList=[]
+        self.LabelList=[]
+        self.LabelRowList=[]
+        row=0;col=0
+        for i in range(HEIGHT*WIDTH):
+            L=Label(master,text='    ',bg=str(self.backg),fg='white',relief=FLAT,bd=4)
+            L.grid(row=row,column=col,sticky=N+E+S+W)
+            L.row=row;L.col=col;L.isactive=PASSIVE
+            self.BlockRowList.append(0);    #大背景每个格子初始化为0值
+            self.LabelRowList.append(L)
+            col=col+1
+            if col>=WIDTH:
+                row=row+1;col=0
+                self.BlockList.append(self.BlockRowList)
+                self.LabelList.append(self.LabelRowList)
+                self.BlockRowList=[]
+                self.LabelRowList=[]
+
+        #file
+        fw=open('text.txt','a')
+        fw.close()
+        hasHead=FALSE
+        f=open('text.txt','r')
+        if f.read(5)=='score':
+            hasHead=TRUE
+        f.close()
+        self.file=open('text.txt','a')
+        if hasHead==FALSE:
+            self.file.write('score    line    time    scorePtime    linePtime    scorePline    date/n')
+            self.file.flush()
+
+        self.time=1000
+        self.OnTimer()
+
+    def __del__(self):
+        #self.file.close()
+        pass
+
+    def Pause(self,event):
+        self.isPause=1-self.isPause
+
+    def Up(self,event):
+        BL=self.BlockList   #格子的值
+        LL=self.LabelList   #格子Label
+
+        Moveable=TRUE       #是否可旋转
+
+        #代码编写开始
+        nowStyle = style[self.xnow][(self.ynow)]
+        newStyle = style[self.xnow][(self.ynow+1)%4]  #算出下一俄罗斯方块
+        self.ynow = (self.ynow+1)%4 #此行代码非常重要，否则响应UP时，只能变第一次
+
+        print("nowStyle:"+str(nowStyle)+"=====>>newStyle:"+str(newStyle))
+
+        #根据现有形状中每个label的坐标计算出旋转后目标坐标(x,y)
+        SourceList=[];DestList=[]
+
+        for i in range(4):
+            SourceList.append([ nowStyle[i][0]+self.px, nowStyle[i][1]+self.py])
+            x = newStyle[i][0]+self.px
+            y = newStyle[i][1]+self.py
+            DestList.append([x, y])
+
+            if x<0 or x>=HEIGHT or y<0 or y>=WIDTH : #or BL[x][y]==1 or LL[x][y].isactive==PASSIVE
+                Moveable=FALSE
+
+        if Moveable==TRUE:
+            for i in range(len(SourceList)):
+                self.Empty(SourceList[i][0],SourceList[i][1])
+            for i in range(len(DestList)):
+                self.Fill(DestList[i][0],DestList[i][1])
+
+    def Left(self,event):
+        BL=self.BlockList;LL=self.LabelList
+        Moveable=TRUE
+        for i in range(HEIGHT):
+            for j in range(WIDTH):
+                if LL[i][j].isactive==ACTIVE and j-1<0:Moveable=FALSE
+                if LL[i][j].isactive==ACTIVE and j-1>=0 and BL[i][j-1]==1 and LL[i][j-1].isactive==PASSIVE:Moveable=FALSE
+        if Moveable==TRUE:
+            self.py-=1
+            for i in range(HEIGHT):
+                for j in range(WIDTH):
+                    if j-1>=0 and LL[i][j].isactive==ACTIVE and BL[i][j-1]==0:
+                        self.Fill(i,j-1);self.Empty(i,j)
+
+    def Right(self,event):
+        BL=self.BlockList;LL=self.LabelList
+        Moveable=TRUE
+        for i in range(HEIGHT):
+            for j in range(WIDTH):
+                if LL[i][j].isactive==ACTIVE and j+1>=WIDTH:Moveable=FALSE
+                if LL[i][j].isactive==ACTIVE and j+1<WIDTH and BL[i][j+1]==1 and LL[i][j+1].isactive==PASSIVE:Moveable=FALSE
+        if Moveable==TRUE:
+            self.py+=1
+            for i in range(HEIGHT-1,-1,-1):
+                for j in range(WIDTH-1,-1,-1):
+                    if j+1<WIDTH and LL[i][j].isactive==ACTIVE and BL[i][j+1]==0:
+                        self.Fill(i,j+1);self.Empty(i,j)
+
+    def Down(self,event):
+        BL=self.BlockList;LL=self.LabelList
+        Moveable=TRUE
+        for i in range(HEIGHT):
+            for j in range(WIDTH):
+                if LL[i][j].isactive==ACTIVE and i+1>=HEIGHT:Moveable=FALSE
+                if LL[i][j].isactive==ACTIVE and i+1<HEIGHT and BL[i+1][j]==1 and LL[i+1][j].isactive==PASSIVE:Moveable=FALSE
+        if Moveable==TRUE and self.isStart :
+            self.px+=1
+            for i in range(HEIGHT-1,-1,-1):
+                for j in range(WIDTH-1,-1,-1):
+                    if i+1<HEIGHT and LL[i][j].isactive==ACTIVE and BL[i+1][j]==0:
+                        self.Fill(i+1,j);self.Empty(i,j);
+        if Moveable==FALSE:
+            for i in range(HEIGHT):
+                for j in range(WIDTH):
+                    LL[i][j].isactive=PASSIVE
+            self.JudgeLineFill()
+            self.Start()
+            if self.isgameover==TRUE:showinfo('T_T','The game is over!');self.Distroy();return FALSE
+            for i in range(4):
+                for j in range(4):
+                    self.NextEmpty(i,j)
+            self.Rnd()
+        return Moveable
+
+    def Space(self,event):
+        while 1:
+            if self.Down(0)==FALSE:break
+
+    def OnTimer(self):
+        if self.isStart==TRUE and self.isPause==FALSE:
+            self.TotalTime = self.TotalTime + float(self.time)/1000
+            self.SpendTime.config(text=str(self.TotalTime))
+
+        if self.isPause==FALSE:
+            self.Down(0)
+        if self.TotalScore>=1000:self.time=900
+        if self.TotalScore>=2000:self.time=750
+        if self.TotalScore>=3000:self.time=600
+        if self.TotalScore>=4000:self.time=400
+        self.after(self.time,self.OnTimer)      #随着分数增大，俄罗斯方块下降速度加快
+
+    def JudgeLineFill(self):
+        BL=self.BlockList;LL=self.LabelList
+        count=0;LineList=[]
+        for i in range(WIDTH):LineList.append(1)
+        #display flash
+        for i in range(HEIGHT):
+            if BL[i]==LineList:
+                count=count+1
+                for k in range(WIDTH):
+                    LL[i][k].config(bg=str(self.flashg))
+                    LL[i][k].update()
+        if count!=0:self.after(100)
+        #delete block
+        for i in range(HEIGHT):
+            if BL[i]==LineList:
+                #count=count+1
+                for j in range(i,0,-1):
+                    for k in range(WIDTH):
+                        BL[j][k]=BL[j-1][k]
+                        LL[j][k]['relief']=LL[j-1][k].cget('relief')
+                        LL[j][k]['bg']=LL[j-1][k].cget('bg')
+                for l in range(WIDTH):
+                    BL[0][l]=0
+                    LL[0][l].config(relief=FLAT,bg=str(self.backg))
+        self.TotalLine=self.TotalLine+count
+        if count==1:self.TotalScore=self.TotalScore+1*WIDTH
+        if count==2:self.TotalScore=self.TotalScore+3*WIDTH
+        if count==3:self.TotalScore=self.TotalScore+6*WIDTH
+        if count==4:self.TotalScore=self.TotalScore+10*WIDTH
+        self.Line.config(text=str(self.TotalLine))
+        self.Score.config(text=str(self.TotalScore))
+
+    def Fill(self,i,j):
+        if j<0:return
+        if self.BlockList[i][j]==1:self.isgameover=TRUE
+        self.BlockList[i][j]=1
+        self.LabelList[i][j].isactive=ACTIVE
+        self.LabelList[i][j].config(relief=RAISED,bg=str(self.frontg))
+
+    def Empty(self,i,j):
+        self.BlockList[i][j]=0
+        self.LabelList[i][j].isactive=PASSIVE
+        self.LabelList[i][j].config(relief=FLAT,bg=str(self.backg))
+
+    def Play(self,event):
+        showinfo('Made in China','^_^')
+
+    def NextFill(self,i,j):
+        self.NextList[i][j].config(relief=RAISED,bg=str(self.frontg))
+
+    def NextEmpty(self,i,j):
+        self.NextList[i][j].config(relief=FLAT,bg=str(self.nextg))
+
+    def Distroy(self):
+        #save
+        if self.TotalScore!=0:
+            #cehkongfu
+            savestr='%-9u%-8u%-8.2f%-14.2f%-13.2f%-14.2f%s/n' % (
+                self.TotalScore,self.TotalLine,self.TotalTime
+               ,self.TotalScore/self.TotalTime
+               ,self.TotalLine/self.TotalTime
+               ,float(self.TotalScore)/self.TotalLine
+               ,time.strftime('%Y-%m-%d %H:%M:%S',time.localtime()))
+            self.file.seek(0,2)
+            self.file.write(savestr)
+            self.file.flush()
+
+        for i in range(HEIGHT):
+            for j in range(WIDTH):
+                self.Empty(i,j)
+        self.TotalLine=0;self.TotalScore=0;self.TotalTime=0.0
+        self.Line.config(text=str(self.TotalLine))
+        self.Score.config(text=str(self.TotalScore))
+        self.SpendTime.config(text=str(self.TotalTime))
+        self.isgameover=FALSE
+        self.isStart=FALSE
+        self.time=1000
+        for i in range(4):
+            for j in range(4):
+                self.NextEmpty(i,j)
+
+    #游戏开始方块
+    def Start(self):
+        nextStyle = style[self.x][self.y]   #下一形状
+        self.xnow = self.x
+        self.ynow = self.y          #记录大背景中的方块
+        self.py = random.randint(0,6)
+        print("给py赋任意值:"+str(self.py))
+        self.px = 0
+        for ii in range(4):
+            self.Fill(int(nextStyle[ii][0]),int(nextStyle[ii][1])+self.py)
+        self.isStart=TRUE   #游戏开始
+
+    #预处理方块
+    def Rnd(self):
+        self.x=random.randint(0,6)
+        self.y=random.randint(0,3)
+        nextStyle = style[self.x][self.y]   #下一形状
+        for ii in range(4):
+            self.NextFill(int(nextStyle[ii][0]),int(nextStyle[ii][1]))
+
+    #游戏开始给出一次任意形状的方块
+    def RndFirst(self):
+        self.x=random.randint(0,6)  #选择第一个方块style
+        self.y=random.randint(0,3)
+
+    def Show(self):
+        self.file.seek(0)
+        strHeadLine=self.file.readline()
+        dictLine={}
+        strTotalLine=''
+        for OneLine in self.file.readlines():
+            temp=int(OneLine[:5])
+            dictLine[temp]=OneLine
+
+        list=sorted(dictLine.items(),key=lambda d:d[0])
+        ii=0
+        for onerecord in reversed(list):
+            ii=ii+1
+            if ii<11:
+                strTotalLine+=onerecord[1]
+        showinfo('Ranking', strHeadLine+strTotalLine)
+
+    def StartByS(self,event):
+        self.RndFirst()
+        self.Start()
+        self.Rnd()
+
+def Start():
+    app.RndFirst()
+    app.Start()
+    app.Rnd()
+
+def End():
+    app.Distroy()
+
+def Set():
+    print("设置功能待完善...")
+
+def Show():
+    app.Show()
+
+#主菜单
+mainmenu=Menu(root)
+root['menu']=mainmenu
+
+#二级菜单：game
+gamemenu=Menu(mainmenu)
+mainmenu.add_cascade(label='游戏',menu=gamemenu)
+gamemenu.add_command(label='开始',command=Start)
+gamemenu.add_command(label='结束',command=End)
+gamemenu.add_separator()
+gamemenu.add_command(label='退出',command=root.quit)
+
+#二级菜单：set
+setmenu=Menu(mainmenu)
+mainmenu.add_cascade(label='设置',menu=setmenu)
+setmenu.add_command(label='设置',command=Set)
+
+#二级菜单：show
+showmenu=Menu(mainmenu)
+mainmenu.add_cascade(label='展示',menu=showmenu)
+showmenu.add_command(label='展示',command=Show)
+
+#绑定功能
+
+app=App(root)
+#程序入口
+root.mainloop()
