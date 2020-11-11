@@ -1,10 +1,11 @@
+def to_python(value):
+    """用于路由匹配"""
+    return int(value)
+
+
 class MobileConverter:
     """匹配手机号码的路由转换器"""
     regex = '1[3-9]\d{9}'
-
-    def to_python(self, value):
-        """用于路由匹配"""
-        return int(value)
 
     def to_url(self, value):
         """用于反向解析时传值的"""
