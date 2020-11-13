@@ -1,6 +1,5 @@
 # encoding:utf-8
 
-
 class Singleton(object):
     __instance = None
 

@@ -22,3 +22,16 @@ alist.extend(blist)
 alist = sorted(set(alist), key=alist.index, reverse=True)
 print(alist)
 
+
+def func(s1):
+    dict1 = {}
+    for items in s1.split("|"):
+        key, value = items.split(":")
+        dict1[key] = value
+    print(dict1)
+    return dict1
+
+
+if __name__ == "__main__":
+    str1 = "K1:1|K2:2|K3:3"
+    func(str1)
